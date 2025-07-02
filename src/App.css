@@ -325,7 +325,6 @@ input[type='number'] {
   gap: 1.5rem;
 }
 
-/* Single column for more space */
 .stat-card {
   background: var(--input-bg);
   padding: 1.5rem;
@@ -432,12 +431,6 @@ body::-webkit-scrollbar-thumb:hover {
   .config-panel {
     border-right: none;
   }
-
-  body {
-    overflow: auto;
-  }
-
-  /* Enable scrolling on smaller viewports */
 }
 
 @media (max-width: 768px) {

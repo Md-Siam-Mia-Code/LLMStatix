@@ -220,8 +220,7 @@ function App() {
           <h1>Hardware Calculator</h1>
           <p>Estimate hardware for LLM inference.</p>
           <button className="share-button" onClick={handleShare}>
-            <i className="fas fa-link"></i>
-            {shareButtonText}
+            <i className="fas fa-link"></i> {shareButtonText}
           </button>
         </header>
         <main>
@@ -259,6 +258,28 @@ function App() {
             onChange={(e) => setBatchSize(Number(e.target.value))}
             min="1"
           />
+          {/* --- FIX: ADDED MISSING DROPDOWNS --- */}
+          <CustomDropdown
+            label="Inference Mode"
+            iconClass="fas fa-forward"
+            selectedValue={inferenceMode}
+            onSelect={setInferenceMode}
+            options={[
+              { value: 'incremental', label: 'Incremental' },
+              { value: 'bulk', label: 'Bulk' },
+            ]}
+          />
+          <CustomDropdown
+            label="KV Cache Precision"
+            iconClass="fas fa-memory"
+            selectedValue={kvCacheQuant}
+            onSelect={setKvCacheQuant}
+            options={[
+              { value: 'F16', label: 'FP16' },
+              { value: 'Q8', label: 'Q8' },
+              { value: 'Q4', label: 'Q4' },
+            ]}
+          />
           <CustomDropdown
             label="Hardware Type"
             iconClass="fas fa-server"
@@ -295,6 +316,7 @@ function App() {
         <main>
           <div className="vram-breakdown">
             <h3>VRAM Breakdown</h3>
+            {/* --- FIX: REMOVED INLINE BACKGROUND STYLE --- */}
             <div className="breakdown-row">
               <div
                 className="breakdown-bar"
@@ -351,7 +373,7 @@ function App() {
               <h3>
                 <i className="fas fa-cloud"></i> Est. Cloud Cost
               </h3>
-              <p className="small-text">{`~ $${recommendation.cloudCost.monthlyCost}/mo (${recommendation.cloudCost.provider})`}</p>
+              <p className="small-text">{`~ $${recommendation.cloudCost.monthlyCost}/mo (${recommendation.cloudCost.provider} - ${recommendation.cloudCost.gpuType})`}</p>
             </div>
           )}
         </main>

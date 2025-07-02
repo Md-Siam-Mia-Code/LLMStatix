@@ -10,59 +10,64 @@ import {
 
 type InferenceMode = 'incremental' | 'bulk';
 
-// --- DATA (Updated with Data Center GPUs) ---
+// --- DATA ---
 const GPU_DATA = [
-  { vram: 8, bandwidth: 448 }, // RTX 4060 Ti
-  { vram: 12, bandwidth: 717 }, // RTX 4070 Ti
-  { vram: 16, bandwidth: 737 }, // RTX 4080
-  { vram: 24, bandwidth: 1008 }, // RTX 4090
-  { vram: 32, bandwidth: 1210 }, // RTX 6000 Ada (for a workstation example)
-  { vram: 40, bandwidth: 1555 }, // A100 (SXM4) 40GB
-  { vram: 48, bandwidth: 1920 }, // RTX A6000 Ada
-  { vram: 80, bandwidth: 3350 }, // H100 (SXM5) 80GB
+  { vram: 8, bandwidth: 448 },
+  { vram: 12, bandwidth: 717 },
+  { vram: 16, bandwidth: 737 },
+  { vram: 24, bandwidth: 1008 },
+  { vram: 32, bandwidth: 1210 },
+  { vram: 40, bandwidth: 1555 },
+  { vram: 48, bandwidth: 1920 },
+  { vram: 80, bandwidth: 3350 },
 ];
 
-const CLOUD_INSTANCES = [
+const CLOUD_INSTANCES: (CloudCost & { vram: number; hourlyCost: number })[] = [
   {
     provider: 'AWS',
     instance: 'g4dn.xlarge',
-    gpu: 'NVIDIA T4',
+    gpuType: 'NVIDIA T4',
     vram: 16,
     hourlyCost: 0.526,
+    monthlyCost: 0,
   },
   {
     provider: 'AWS',
     instance: 'g5.2xlarge',
-    gpu: 'NVIDIA A10G',
+    gpuType: 'NVIDIA A10G',
     vram: 24,
     hourlyCost: 1.006,
+    monthlyCost: 0,
   },
   {
     provider: 'GCP',
     instance: 'a2-highgpu-1g',
-    gpu: 'NVIDIA A100',
+    gpuType: 'NVIDIA A100',
     vram: 40,
     hourlyCost: 3.22,
+    monthlyCost: 0,
   },
   {
     provider: 'AWS',
     instance: 'p4d.24xlarge',
-    gpu: 'NVIDIA A100',
+    gpuType: 'NVIDIA A100',
     vram: 40,
     hourlyCost: 32.77,
+    monthlyCost: 0,
   },
   {
     provider: 'AWS',
     instance: 'p5.48xlarge',
-    gpu: 'NVIDIA H100',
+    gpuType: 'NVIDIA H100',
     vram: 80,
     hourlyCost: 98.32,
+    monthlyCost: 0,
   },
 ];
 
 // --- HELPERS ---
-export const getModelQuantFactor = (q: ModelQuantization): number => {
-  const factors = {
+const getModelQuantFactor = (q: ModelQuantization): number =>
+  ({
     F16: 2.0,
     Q8: 1.0,
     Q6: 0.75,
@@ -73,13 +78,10 @@ export const getModelQuantFactor = (q: ModelQuantization): number => {
     F32: 4.0,
     Q3: 0.375,
     Q2: 0.25,
-  };
-  return factors[q] || 1.0;
-};
-export const getKvCacheQuantFactor = (k: KvCacheQuantization): number =>
+  })[q] || 1.0;
+
+const getKvCacheQuantFactor = (k: KvCacheQuantization): number =>
   getModelQuantFactor(k as any);
-export const calculateOnDiskSize = (p: number, q: ModelQuantization): number =>
-  p * getModelQuantFactor(q);
 
 // --- CORE CALCULATIONS ---
 export const calculateVramUsage = (
@@ -104,41 +106,43 @@ export const calculateVramUsage = (
   };
 };
 
-export const calculatePerformance = (
+const calculatePerformance = (
   params: number,
   modelQuant: ModelQuantization,
   gpuVram: number
 ): PerformanceMetrics => {
   const gpu = GPU_DATA.find((g) => g.vram === gpuVram) || GPU_DATA[0];
-  const bytesPerParam = getModelQuantFactor(modelQuant);
-  const bytesPerToken = params * 1e9 * bytesPerParam;
+  const bytesPerToken = params * 1e9 * getModelQuantFactor(modelQuant);
   const theoreticalTokensPerSecond = (gpu.bandwidth * 1e9) / bytesPerToken;
   const efficiencyFactor = 0.35;
   const tokensPerSecond = theoreticalTokensPerSecond * efficiencyFactor;
   return { tokensPerSecond: parseFloat(tokensPerSecond.toFixed(1)) };
 };
 
-export const calculateCloudCost = (
+const calculateCloudCost = (
   vramNeeded: number,
   gpusRequired: number
 ): CloudCost | null => {
-  if (gpusRequired > 1) {
-    const suitableInstance = CLOUD_INSTANCES.find((i) => i.vram >= vramNeeded);
-    if (!suitableInstance) return null;
-    return {
-      ...suitableInstance,
-      monthlyCost: parseFloat(
-        (suitableInstance.hourlyCost * gpusRequired * 730).toFixed(0)
-      ),
-    };
-  }
-  const suitableInstance = CLOUD_INSTANCES.sort(
+  if (gpusRequired > 8) return null; // Not feasible for simple cost estimation
+  const suitableInstances = CLOUD_INSTANCES.filter(
+    (i) => i.vram * (gpusRequired > 1 ? 8 : 1) >= vramNeeded
+  );
+  if (suitableInstances.length === 0) return null;
+
+  const cheapest = suitableInstances.sort(
     (a, b) => a.hourlyCost - b.hourlyCost
-  ).find((i) => i.vram >= vramNeeded);
-  if (!suitableInstance) return null;
+  )[0];
   return {
-    ...suitableInstance,
-    monthlyCost: parseFloat((suitableInstance.hourlyCost * 730).toFixed(0)),
+    provider: cheapest.provider,
+    instance: cheapest.instance,
+    monthlyCost: parseFloat(
+      (
+        cheapest.hourlyCost *
+        (gpusRequired > 1 ? gpusRequired : 1) *
+        730
+      ).toFixed(0)
+    ),
+    gpuType: cheapest.gpuType,
   };
 };
 
@@ -181,7 +185,9 @@ export const calculateHardwareRecommendation = (
       ? `Fits in ${systemMemory}GB RAM`
       : `Exceeds ${systemMemory}GB RAM`;
   }
+
   const cloudCost = calculateCloudCost(vramNeeded.total, gpusRequired);
+
   return {
     gpuType,
     vramNeeded,
