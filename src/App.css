@@ -1,240 +1,213 @@
 /* ---
-  LLMStatix Final Design
-  - Refined component-based layout
-  - Polished custom controls and animations
+  LLMStatix - Final Polished UI
 --- */
 
-/* 1. ROOT & GLOBAL STYLES
+/* 1. ROOT & STATIC BACKGROUND
 --------------------------------------------- */
 :root {
-  /* Color Palette */
   --space-cadet: #2b2d42;
   --cool-gray: #8d99ae;
   --antiflash-white: #edf2f4;
   --red-pantone: #ef233c;
   --fire-engine-red: #d90429;
-
-  /* Semantic Colors */
-  --bg-color: #222436;
-  /* A deeper, darker base for contrast */
-  --surface-color: var(--space-cadet);
-  /* Cards and interactive surfaces */
+  --cool-glow-color: #3671ff;
   --text-color: var(--antiflash-white);
   --text-muted-color: var(--cool-gray);
   --accent-color: var(--red-pantone);
-  --border-color: rgba(141, 153, 174, 0.2);
-  --focus-ring-color: rgba(239, 35, 60, 0.4);
-  /* Accent color with alpha */
-  --radius: 12px;
-  --shadow: 0 10px 35px rgba(0, 0, 0, 0.15);
+  --accent-gradient: linear-gradient(
+    90deg,
+    var(--fire-engine-red),
+    var(--red-pantone)
+  );
+  --glass-bg: rgba(43, 45, 66, 0.45);
+  --glass-border: rgba(141, 153, 174, 0.15);
+  --input-bg: rgba(0, 0, 0, 0.25);
+  --focus-ring: rgba(239, 35, 60, 0.5);
+  --radius: 16px;
 }
 
 body {
   margin: 0;
-  background-color: var(--bg-color);
   font-family:
     'Poppins',
     -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
     sans-serif;
   color: var(--text-color);
+  background-color: #1a1a2e;
+  background-image:
+    radial-gradient(
+      circle at 15% 15%,
+      var(--cool-glow-color) 0%,
+      transparent 35%
+    ),
+    radial-gradient(circle at 85% 85%, var(--accent-color) 0%, transparent 35%);
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-/* 2. APP LAYOUT & PANELS
+/* 2. MAIN LAYOUT & ENTRY ANIMATION
 --------------------------------------------- */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .App {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 4rem 2rem;
-}
-
-.app-header {
-  text-align: center;
-  margin-bottom: 3.5rem;
-}
-
-.app-header h1 {
-  font-size: 2.8rem;
-  font-weight: 700;
-  margin: 0 0 0.5rem 0;
-}
-
-.app-header p {
-  font-size: 1.2rem;
-  color: var(--text-muted-color);
-  margin: 0;
-  max-width: 500px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.calculator-layout {
+  max-width: 1300px;
+  margin: 4rem auto;
+  background: var(--glass-bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  /* Flexible left, fixed right */
-  gap: 3rem;
-  align-items: flex-start;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  opacity: 0;
+  animation: fadeIn 0.6s ease-out 0.1s forwards;
 }
 
-.input-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-  /* Space between configuration groups */
+.config-panel {
+  padding: 3rem;
+  border-right: 1px solid var(--glass-border);
 }
 
 .results-panel {
-  position: sticky;
-  top: 2rem;
-  background-color: var(--surface-color);
-  border-radius: var(--radius);
-  padding: 2rem;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border-color);
+  padding: 3rem;
 }
 
-/* 3. CONFIGURATION GROUPS
+/* 3. HEADER & CONFIGURATION SECTION
 --------------------------------------------- */
-.config-group {
-  background-color: var(--surface-color);
-  border-radius: var(--radius);
-  padding: 2rem;
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow);
+.config-header {
+  position: relative;
+  margin-bottom: 2.5rem;
 }
 
-.config-group-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin: 0 0 1.5rem 0;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.config-group-header i {
-  font-size: 1.1rem;
-  color: var(--accent-color);
-}
-
-.config-group-header h2 {
-  font-size: 1.1rem;
-  font-weight: 600;
+.config-header h1 {
+  font-size: 2rem;
   margin: 0;
-  color: var(--text-color);
 }
 
-.config-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
+.config-header p {
+  font-size: 1rem;
+  color: var(--text-muted-color);
+  margin: 0.25rem 0 0 0;
 }
 
-/* 4. CUSTOM FORM COMPONENTS
---------------------------------------------- */
+.share-button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: var(--input-bg);
+  color: var(--text-muted-color);
+  border: 1px solid var(--glass-border);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Poppins';
+}
+
+.share-button:hover {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: white;
+  transform: translateY(-2px);
+}
+
+.share-button:active {
+  transform: translateY(0);
+}
+
+.share-button .fas {
+  margin-right: 0.5rem;
+}
+
 .form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
+  margin-bottom: 1.5rem;
 }
 
 .form-group label {
+  display: block;
   font-weight: 500;
   font-size: 0.9rem;
   color: var(--text-muted-color);
+  margin-bottom: 0.75rem;
 }
 
-/* Custom Number Input */
-.input-group {
-  position: relative;
-}
-
-.input-group i {
-  position: absolute;
-  left: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-muted-color);
-  transition: color 0.2s;
-}
-
-.input-group input {
+.input-base {
+  display: flex;
+  align-items: center;
   width: 100%;
-  background-color: var(--bg-color);
-  border: 1px solid var(--border-color);
+  background-color: var(--input-bg);
+  border: 1px solid transparent;
   border-radius: 8px;
-  padding: 0.8rem 1rem 0.8rem 2.75rem;
+  padding: 0.9rem 1rem;
   color: var(--text-color);
-  font-family: 'Poppins', sans-serif;
   font-size: 1rem;
-  transition:
-    border-color 0.2s,
-    box-shadow 0.2s;
+  transition: all 0.2s ease;
 }
 
-.input-group input:focus {
-  outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 3px var(--focus-ring-color);
+.input-base:focus-within {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
-.input-group input:focus ~ i {
+.input-base i {
+  color: var(--text-muted-color);
+  margin-right: 1rem;
+  width: 1.1em;
+  transition: color 0.2s ease;
+}
+
+.input-base:focus-within i {
   color: var(--accent-color);
 }
 
-/* Custom Dropdown */
+.input-base input {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  width: 100%;
+}
+
+.input-base input:focus {
+  outline: none;
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  display: none;
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
 .custom-dropdown {
   position: relative;
 }
 
 .dropdown-header {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  background-color: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 0.8rem 1rem;
-  text-align: left;
-  font-family: 'Poppins', sans-serif;
-  font-size: 1rem;
-  color: var(--text-color);
   cursor: pointer;
-  transition:
-    border-color 0.2s,
-    box-shadow 0.2s;
-}
-
-.dropdown-header:hover {
-  border-color: var(--cool-gray);
-}
-
-.dropdown-header.open {
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 3px var(--focus-ring-color);
-}
-
-.dropdown-header i:first-child {
-  color: var(--text-muted-color);
-  margin-right: 0.75rem;
-  width: 1em;
-  transition: color 0.2s;
-}
-
-.dropdown-header.open i:first-child {
-  color: var(--accent-color);
 }
 
 .dropdown-header .dropdown-arrow {
   margin-left: auto;
   color: var(--text-muted-color);
-  transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+  transition: transform 0.3s ease;
 }
 
-.dropdown-header .dropdown-arrow.open {
+.dropdown-header.open .dropdown-arrow {
   transform: rotate(180deg);
 }
 
@@ -245,16 +218,13 @@ body {
   left: 0;
   background-color: #353852;
   border-radius: 8px;
-  border: 1px solid var(--border-color);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--glass-border);
   z-index: 10;
   overflow: hidden;
   opacity: 0;
   transform: translateY(-10px) scale(0.98);
   pointer-events: none;
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .dropdown-list-container.open {
@@ -267,17 +237,13 @@ body {
   list-style: none;
   padding: 0.5rem;
   margin: 0;
-  max-height: 200px;
-  overflow-y: auto;
 }
 
 .dropdown-item {
   padding: 0.75rem 1rem;
   border-radius: 6px;
   cursor: pointer;
-  transition:
-    background-color 0.15s,
-    color 0.15s;
+  transition: all 0.15s;
 }
 
 .dropdown-item:hover {
@@ -290,17 +256,13 @@ body {
   color: var(--accent-color);
 }
 
-.dropdown-item.selected:hover {
-  color: white;
-}
-
-/* 5. RESULTS PANEL & GAUGE
+/* 4. RESULTS PANEL & CIRCULAR GAUGE
 --------------------------------------------- */
 .vram-gauge {
   position: relative;
-  width: 100%;
-  padding-top: 100%;
-  margin-bottom: 2rem;
+  width: 70%;
+  padding-top: 70%;
+  margin: 0 auto 2.5rem auto;
 }
 
 .gauge-svg {
@@ -318,13 +280,13 @@ body {
 }
 
 .gauge-track {
-  stroke: var(--bg-color);
+  stroke: var(--input-bg);
 }
 
 .gauge-fill {
   stroke: url(#gauge-gradient);
   stroke-linecap: round;
-  transition: stroke-dashoffset 0.6s cubic-bezier(0.645, 0.045, 0.355, 1);
+  transition: stroke-dashoffset 0.6s ease;
 }
 
 .gauge-text {
@@ -336,10 +298,11 @@ body {
 }
 
 .gauge-value {
-  font-size: 3.2rem;
+  font-size: 3.5rem;
   font-weight: 700;
   line-height: 1;
   margin: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .gauge-value span {
@@ -349,55 +312,160 @@ body {
   margin-left: 0.25rem;
 }
 
-.gauge-label {
-  font-size: 0.9rem;
+.gauge-percentage {
+  font-size: 1rem;
   font-weight: 500;
   color: var(--text-muted-color);
-  margin-top: 0.5rem;
+  margin-top: 0.75rem;
 }
 
 .results-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 1.5rem;
-  text-align: center;
 }
 
-.stat h3 {
+/* Single column for more space */
+.stat-card {
+  background: var(--input-bg);
+  padding: 1.5rem;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.stat-card h3 {
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text-muted-color);
   margin: 0 0 0.5rem 0;
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 0.5rem;
 }
 
-.stat p {
-  font-size: 1.25rem;
+.stat-card p {
+  font-size: 1.4rem;
   font-weight: 600;
   margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-card .small-text {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.vram-breakdown {
+  margin-top: 2.5rem;
+}
+
+.vram-breakdown h3 {
+  font-size: 1rem;
+  color: var(--text-muted-color);
+  margin-bottom: 1.5rem;
+}
+
+.breakdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  position: relative;
+  padding: 0.25rem 0;
+}
+
+.breakdown-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.breakdown-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  opacity: 0.1;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.breakdown-value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  z-index: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 5. CUSTOM SCROLLBAR
+--------------------------------------------- */
+body::-webkit-scrollbar {
+  width: 12px;
+}
+
+body::-webkit-scrollbar-track {
+  background: var(--bg-color);
+}
+
+body::-webkit-scrollbar-thumb {
+  background-color: var(--space-cadet);
+  border-radius: 6px;
+  border: 3px solid var(--bg-color);
+}
+
+body::-webkit-scrollbar-thumb:hover {
+  background-color: var(--accent-color);
 }
 
 /* 6. RESPONSIVENESS
 --------------------------------------------- */
-@media (max-width: 900px) {
-  .calculator-layout {
+@media (max-width: 1100px) {
+  .App {
     grid-template-columns: 1fr;
+    margin: 2rem;
   }
 
-  .results-panel {
-    position: static;
+  .config-panel {
+    border-right: none;
   }
+
+  body {
+    overflow: auto;
+  }
+
+  /* Enable scrolling on smaller viewports */
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
   .App {
-    padding: 2.5rem 1rem;
+    margin: 0;
+    border-radius: 0;
   }
 
-  .config-grid {
-    grid-template-columns: 1fr;
+  .config-panel,
+  .results-panel {
+    padding: 1.5rem;
+  }
+
+  .config-header {
+    text-align: center;
+  }
+
+  .share-button {
+    position: static;
+    margin-top: 1rem;
+  }
+
+  .vram-gauge {
+    width: 80%;
+    padding-top: 80%;
+  }
+
+  .gauge-value {
+    font-size: 3rem;
   }
 }

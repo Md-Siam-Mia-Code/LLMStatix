@@ -17,11 +17,34 @@ export type ModelQuantization =
 /** KV cache quantization: F32, F16, Q8, Q5, Q4. */
 export type KvCacheQuantization = 'F32' | 'F16' | 'Q8' | 'Q5' | 'Q4';
 
-/** Recommendation for final output. */
+/** VRAM usage broken down by component. */
+export interface VramBreakdown {
+  modelWeights: number;
+  kvCache: number;
+  overhead: number;
+  total: number;
+}
+
+/** Estimated performance metrics. */
+export interface PerformanceMetrics {
+  tokensPerSecond: number;
+}
+
+/** Estimated cloud hosting costs. */
+export interface CloudCost {
+  provider: string;
+  instance: string;
+  monthlyCost: number;
+  gpuType: string;
+}
+
+/** Main recommendation object returned by the calculator. */
 export interface Recommendation {
-  gpuType: string; // e.g., 'Single 24GB GPU' or 'Unified memory...'
-  vramNeeded: string; // e.g., "32.5"
-  fitsUnified: boolean; // relevant if memoryMode = 'UNIFIED_MEMORY'
-  systemRamNeeded: number; // in GB
-  gpusRequired: number; // discrete GPUs required (0 if doesn't fit)
+  gpuType: string;
+  vramNeeded: VramBreakdown;
+  fitsUnified: boolean;
+  systemRamNeeded: number;
+  gpusRequired: number;
+  performance: PerformanceMetrics;
+  cloudCost: CloudCost | null;
 }

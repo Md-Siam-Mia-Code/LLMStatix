@@ -3,213 +3,192 @@ import {
   ModelQuantization,
   KvCacheQuantization,
   Recommendation,
+  VramBreakdown,
+  PerformanceMetrics,
+  CloudCost,
 } from './types';
 
 type InferenceMode = 'incremental' | 'bulk';
 
-/**
- * Returns GB factor for a 1B param model based on quantization.
- * This function converts the quantization setting into an estimate of how many
- * gigabytes are required per 1B parameters. For example, FP16 (F16) uses 2GB per 1B.
- */
+// --- DATA (Updated with Data Center GPUs) ---
+const GPU_DATA = [
+  { vram: 8, bandwidth: 448 }, // RTX 4060 Ti
+  { vram: 12, bandwidth: 717 }, // RTX 4070 Ti
+  { vram: 16, bandwidth: 737 }, // RTX 4080
+  { vram: 24, bandwidth: 1008 }, // RTX 4090
+  { vram: 32, bandwidth: 1210 }, // RTX 6000 Ada (for a workstation example)
+  { vram: 40, bandwidth: 1555 }, // A100 (SXM4) 40GB
+  { vram: 48, bandwidth: 1920 }, // RTX A6000 Ada
+  { vram: 80, bandwidth: 3350 }, // H100 (SXM5) 80GB
+];
+
+const CLOUD_INSTANCES = [
+  {
+    provider: 'AWS',
+    instance: 'g4dn.xlarge',
+    gpu: 'NVIDIA T4',
+    vram: 16,
+    hourlyCost: 0.526,
+  },
+  {
+    provider: 'AWS',
+    instance: 'g5.2xlarge',
+    gpu: 'NVIDIA A10G',
+    vram: 24,
+    hourlyCost: 1.006,
+  },
+  {
+    provider: 'GCP',
+    instance: 'a2-highgpu-1g',
+    gpu: 'NVIDIA A100',
+    vram: 40,
+    hourlyCost: 3.22,
+  },
+  {
+    provider: 'AWS',
+    instance: 'p4d.24xlarge',
+    gpu: 'NVIDIA A100',
+    vram: 40,
+    hourlyCost: 32.77,
+  },
+  {
+    provider: 'AWS',
+    instance: 'p5.48xlarge',
+    gpu: 'NVIDIA H100',
+    vram: 80,
+    hourlyCost: 98.32,
+  },
+];
+
+// --- HELPERS ---
 export const getModelQuantFactor = (q: ModelQuantization): number => {
-  switch (q) {
-    case 'F32':
-      return 4.0;
-    case 'F16':
-      return 2.0;
-    case 'Q8':
-      return 1.0;
-    case 'Q6':
-      return 0.75;
-    case 'Q5':
-      return 0.625;
-    case 'Q4':
-      return 0.5;
-    case 'Q3':
-      return 0.375;
-    case 'Q2':
-      return 0.25;
-    case 'GPTQ':
-      return 0.4; // approximate factor for GPTQ quantization
-    case 'AWQ':
-      return 0.35; // approximate factor for AWQ quantization
-    default:
-      return 1.0;
-  }
+  const factors = {
+    F16: 2.0,
+    Q8: 1.0,
+    Q6: 0.75,
+    Q5: 0.625,
+    Q4: 0.5,
+    GPTQ: 0.6,
+    AWQ: 0.6,
+    F32: 4.0,
+    Q3: 0.375,
+    Q2: 0.25,
+  };
+  return factors[q] || 1.0;
 };
+export const getKvCacheQuantFactor = (k: KvCacheQuantization): number =>
+  getModelQuantFactor(k as any);
+export const calculateOnDiskSize = (p: number, q: ModelQuantization): number =>
+  p * getModelQuantFactor(q);
 
-/**
- * Returns GB factor for KV cache usage (per 1B params), depending on quantization.
- * This is used to adjust the additional memory required when KV caching is enabled.
- */
-export const getKvCacheQuantFactor = (k: KvCacheQuantization): number => {
-  switch (k) {
-    case 'F32':
-      return 4.0;
-    case 'F16':
-      return 2.0;
-    case 'Q8':
-      return 1.0;
-    case 'Q5':
-      return 0.625;
-    case 'Q4':
-      return 0.5;
-    default:
-      return 1.0;
-  }
-};
-
-/**
- * Calculate VRAM requirement (GB) for single-user inference,
- * distinguishing between incremental and bulk forward pass.
- *
- * Changes made:
- *  - Removed context scaling from the base model memory since model weights are fixed.
- *  - Added context-based memory estimation separately:
- *      * Incremental mode only adds KV cache overhead.
- *      * Bulk mode adds a larger overhead for storing full activations.
- *  - Included a further addition if KV cache is enabled in bulk mode.
- *  - Finally, an overhead factor of ~10% is applied for fragmentation and extra buffers.
- */
-export const calculateRequiredVram = (
-  params: number, // number of model parameters in *billions*
+// --- CORE CALCULATIONS ---
+export const calculateVramUsage = (
+  params: number,
   modelQuant: ModelQuantization,
   contextLength: number,
-  useKvCache: boolean,
   kvCacheQuant: KvCacheQuantization,
-  inferenceMode: InferenceMode
-): number => {
-  // 1) Base model memory is independent of context length.
-  const modelFactor = getModelQuantFactor(modelQuant);
-  const baseModelMem = params * modelFactor; // e.g. 8B params * 2.0 = 16GB for an 8B FP16 model
-
-  // 2) Estimate additional memory needed for context processing.
-  let contextMem = 0;
-
-  if (inferenceMode === 'incremental') {
-    // Incremental/streaming decoding:
-    // Memory usage is primarily driven by the KV cache if enabled.
-    if (useKvCache) {
-      // alphaAt2048 represents the fraction of base model memory used by the KV cache at 2048 tokens.
-      const alphaAt2048 = 0.2;
-      const kvFactor = getKvCacheQuantFactor(kvCacheQuant);
-      // Scale KV memory linearly with context length relative to 2048 tokens.
-      const kvScale = contextLength / 2048;
-      contextMem = baseModelMem * alphaAt2048 * kvScale * kvFactor;
-    }
-    // When KV cache is off, minimal extra memory is required for incremental decoding.
-  } else {
-    // Bulk forward pass:
-    // In bulk mode, the entire context is processed at once, leading to a larger memory footprint.
-    // We use a larger alpha value (bulkAlphaAt2048) to represent the higher overhead.
-    const bulkAlphaAt2048 = 0.5; // Rough estimate for full activation storage at 2048 tokens.
-    const bulkScale = contextLength / 2048;
-    contextMem = baseModelMem * bulkAlphaAt2048 * bulkScale;
-
-    // If KV cache is enabled, add extra overhead (though in a full forward pass, it might be less effective).
-    if (useKvCache) {
-      const kvFactor = getKvCacheQuantFactor(kvCacheQuant);
-      contextMem += baseModelMem * 0.1 * kvFactor * bulkScale;
-    }
-  }
-
-  // 3) Total VRAM = base model memory + context-dependent memory.
-  let totalVram = baseModelMem + contextMem;
-
-  // 4) Add an overhead factor (~10%) to account for fragmentation and extra buffers.
-  const overheadFactor = 1.1;
-  totalVram *= overheadFactor;
-
-  return totalVram;
+  inferenceMode: InferenceMode,
+  batchSize: number
+): VramBreakdown => {
+  const modelWeights = params * getModelQuantFactor(modelQuant);
+  const kvFactor = getKvCacheQuantFactor(kvCacheQuant) / 2.0;
+  let kvCache = params * 0.7 * (contextLength / 4096) * batchSize * kvFactor;
+  if (inferenceMode === 'bulk') kvCache *= 1.5;
+  const overhead = 1.0 + modelWeights * 0.05;
+  const total = modelWeights + kvCache + overhead;
+  return {
+    modelWeights: parseFloat(modelWeights.toFixed(2)),
+    kvCache: parseFloat(kvCache.toFixed(2)),
+    overhead: parseFloat(overhead.toFixed(2)),
+    total: parseFloat(total.toFixed(2)),
+  };
 };
 
-/**
- * Calculate hardware recommendation based on model parameters and system configuration.
- *
- * Changes made:
- *  - The system RAM calculation now includes an estimate for extra activation memory in bulk mode.
- *  - GPU requirement is calculated with a buffer multiplier (1.2) to account for fragmentation.
- *  - The logic now differentiates between unified memory and discrete GPU setups.
- */
+export const calculatePerformance = (
+  params: number,
+  modelQuant: ModelQuantization,
+  gpuVram: number
+): PerformanceMetrics => {
+  const gpu = GPU_DATA.find((g) => g.vram === gpuVram) || GPU_DATA[0];
+  const bytesPerParam = getModelQuantFactor(modelQuant);
+  const bytesPerToken = params * 1e9 * bytesPerParam;
+  const theoreticalTokensPerSecond = (gpu.bandwidth * 1e9) / bytesPerToken;
+  const efficiencyFactor = 0.35;
+  const tokensPerSecond = theoreticalTokensPerSecond * efficiencyFactor;
+  return { tokensPerSecond: parseFloat(tokensPerSecond.toFixed(1)) };
+};
+
+export const calculateCloudCost = (
+  vramNeeded: number,
+  gpusRequired: number
+): CloudCost | null => {
+  if (gpusRequired > 1) {
+    const suitableInstance = CLOUD_INSTANCES.find((i) => i.vram >= vramNeeded);
+    if (!suitableInstance) return null;
+    return {
+      ...suitableInstance,
+      monthlyCost: parseFloat(
+        (suitableInstance.hourlyCost * gpusRequired * 730).toFixed(0)
+      ),
+    };
+  }
+  const suitableInstance = CLOUD_INSTANCES.sort(
+    (a, b) => a.hourlyCost - b.hourlyCost
+  ).find((i) => i.vram >= vramNeeded);
+  if (!suitableInstance) return null;
+  return {
+    ...suitableInstance,
+    monthlyCost: parseFloat((suitableInstance.hourlyCost * 730).toFixed(0)),
+  };
+};
+
 export const calculateHardwareRecommendation = (
   params: number,
   modelQuant: ModelQuantization,
   contextLength: number,
-  useKvCache: boolean,
   kvCacheQuant: KvCacheQuantization,
   memoryMode: MemoryMode,
   systemMemory: number,
   gpuVram: number,
-  inferenceMode: InferenceMode
+  inferenceMode: InferenceMode,
+  batchSize: number
 ): Recommendation => {
-  const requiredVram = calculateRequiredVram(
+  const vramNeeded = calculateVramUsage(
     params,
     modelQuant,
     contextLength,
-    useKvCache,
     kvCacheQuant,
-    inferenceMode
+    inferenceMode,
+    batchSize
   );
-
-  // Adjust system RAM calculation to include additional bulk activation memory.
-  // For incremental mode, assume half of base memory is needed.
-  // For bulk mode, add extra memory proportional to the context length.
-  const baseSystemRamNeeded =
-    params * getModelQuantFactor(modelQuant) * 0.5 +
-    (inferenceMode === 'bulk' ? contextLength / 1024 : 0);
-  const systemRamNeeded = Math.max(8, baseSystemRamNeeded); // Ensure at least 8GB is recommended.
-
-  // Determine if the required VRAM fits within unified memory mode.
+  const performance = calculatePerformance(params, modelQuant, gpuVram);
+  const systemRamNeeded = Math.max(8, vramNeeded.total * 0.5);
   const fitsUnified =
-    memoryMode === 'UNIFIED_MEMORY' && systemMemory >= requiredVram;
-
-  // Calculate discrete GPU requirements.
+    memoryMode === 'UNIFIED_MEMORY' && systemMemory >= vramNeeded.total;
   let gpusRequired = 0;
   let gpuType = '';
 
   if (memoryMode === 'DISCRETE_GPU') {
-    // Use a buffer multiplier (1.2) to account for real-world fragmentation.
-    gpusRequired = Math.ceil((requiredVram * 1.2) / gpuVram);
-    if (gpusRequired === 1) {
-      gpuType = `Single ${gpuVram}GB GPU`;
-    } else if (gpusRequired <= 8) {
-      gpuType = `${gpusRequired}x ${gpuVram}GB GPUs`;
-    } else {
-      // If more than 8 GPUs are needed, mark it as not feasible.
-      gpuType = `Exceeds 8x ${gpuVram}GB GPUs`;
-      gpusRequired = 0;
+    gpusRequired = Math.ceil(vramNeeded.total / gpuVram);
+    if (gpusRequired === 1) gpuType = `Single ${gpuVram}GB GPU`;
+    else if (gpusRequired <= 8) gpuType = `${gpusRequired}x ${gpuVram}GB GPUs`;
+    else {
+      gpuType = `> 8 GPUs`;
+      gpusRequired = Infinity;
     }
   } else {
-    // For unified memory mode, no discrete GPUs are needed.
-    gpuType = `Unified memory (${systemMemory}GB)`;
-    gpusRequired = 0;
+    gpuType = fitsUnified
+      ? `Fits in ${systemMemory}GB RAM`
+      : `Exceeds ${systemMemory}GB RAM`;
   }
-
+  const cloudCost = calculateCloudCost(vramNeeded.total, gpusRequired);
   return {
     gpuType,
-    vramNeeded: requiredVram.toFixed(2),
+    vramNeeded,
     fitsUnified,
     systemRamNeeded,
     gpusRequired,
+    performance,
+    cloudCost,
   };
-};
-
-/**
- * Estimate on-disk model size.
- *
- * Changes made:
- *  - Instead of directly returning the product of parameters and the quantization factor,
- *    we now convert the effective factor (GB per 1B params) to bits per parameter,
- *    compute total bits, then convert to bytes and finally to gigabytes.
- */
-export const calculateOnDiskSize = (
-  params: number,
-  modelQuant: ModelQuantization
-): number => {
-  const modelFactor = getModelQuantFactor(modelQuant);
-  // Convert GB per 1B params to bits per parameter.
-  const bitsPerParam = modelFactor * 8;
-  const totalBits = params * 1e9 * bitsPerParam;
-  return totalBits / 8 / 1e9; // Convert bytes to GB
 };
